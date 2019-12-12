@@ -22,7 +22,7 @@ def catch_dns_request(packet):
 
     try:
         ip = getattr(packet, "ip", packet.ipv6)
-        ip_route = f"{ip.src} -> {ip.dest}"
+        ip_route = f"{ip.src} -> {ip.dst}"
     except AttributeError:
         ip_route = "unknown"
 

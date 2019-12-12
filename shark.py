@@ -3,24 +3,34 @@
 import pyshark
 
 
-def print_dns_info(pkt):
+def catch_dns_request(packet):
+    # https://serverfault.com/questions/173187/what-does-a-dns-request-look-like
     try:
-        protocol = pkt.transport_layer
-        src_addr = pkt.ip.src
-        src_port = pkt[pkt.transport_layer].srcport
-        dst_addr = pkt.ip.dst
-        dst_port = pkt[pkt.transport_layer].dstport
-        summary = f"{protocol} {src_addr}:{src_port} --> {dst_addr}:{dst_port}"
-        print(summary)
-        print(pkt)
-        with open('report.txt', 'a', encoding='utf-8') as f:
-            f.write(f"{summary}\n{pkt}\n")
-    except AttributeError as e:
-        # goes here if a packet is not TCP/UDP nor IPv4
-        pass
+        layer_dns = packet.dns
+    except AttributeError:
+        return
+
+    try:
+        resp = layer_dns.resp
+        name = resp.name
+        dns_type = resp.type
+        packet_type = 'RESPONSE'
+    except AttributeError:
+        name = layer_dns.qry_name
+        dns_type = layer_dns.qry_type
+        packet_type = 'REQUEST'
+
+    try:
+        ip = getattr(packet, "ip", packet.ipv6)
+        ip_route = f"{ip.src} -> {ip.dest}"
+    except AttributeError:
+        ip_route = "unknown"
+
+    with open("report.txt", 'a', encoding='utf-8') as f:
+        f.write(f"{packet.sniff_time:%d-%m-%Y %H:%M:%S} DNS {dns_type} {packet_type} {name} {ip_route}\n")
 
 
 # print(pyshark.tshark.tshark.get_tshark_interfaces())
 capture = pyshark.LiveCapture(interface="eth0")
 capture.set_debug()
-capture.apply_on_packets(print_dns_info)
+capture.apply_on_packets(catch_dns_request)

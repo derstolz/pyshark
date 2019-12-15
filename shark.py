@@ -20,6 +20,11 @@ def get_arguments():
                         default=False,
                         required=False,
                         help='Pass this argument to enable dns sniffing. Default is False')
+    parser.add_argument('--http',
+                        action='store_true',
+                        default=False,
+                        required=False,
+                        help='Pass this argument to enable HTTP sniffing. Default is False')
     parser.add_argument('-o',
                         '--output',
                         dest='output',
@@ -35,10 +40,14 @@ options = get_arguments()
 
 
 class Shark:
-    def __init__(self, network_interface, output_file, capture_dns=False):
+    def __init__(self, network_interface,
+                 output_file,
+                 capture_dns=False,
+                 capture_http=False):
         self.network_interface = network_interface
         self.output_file = output_file
         self.capture_dns = capture_dns
+        self.capture_http = capture_http
 
     def start(self):
         capture = pyshark.LiveCapture(interface=options.interface)
@@ -46,19 +55,34 @@ class Shark:
         capture.apply_on_packets(self.sniff_packet)
 
     def sniff_packet(self, packet):
-        log_message = f'{packet.transport_layer} {packet.highest_layer} {packet.ip.src} -> {packet.ip.dst}'
-        if self.capture_dns:
-            if hasattr(packet, 'dns'):
-                dns = packet.dns
-                if hasattr(dns, 'qry_name'):
-                    if hasattr(dns, 'a'):
-                        print(f'{log_message} {dns.qry_name} {dns.a}')
-                    else:
-                        print(f'{log_message} {dns.qry_name}')
+        srcport = ''
+        dstport = ''
+        if hasattr(packet, 'tcp'):
+            srcport = f':{packet.tcp.srcport}'
+            dstport = f':{packet.tcp.dstport}'
+        elif hasattr(packet, 'udp'):
+            srcport = f':{packet.udp.srcport}'
+            dstport = f':{packet.udp.dstport}'
+        log_message = f'{packet.transport_layer} {packet.highest_layer} ' \
+            f'{packet.ip.src}{srcport} -> {packet.ip.dst}{dstport}'
+        if self.capture_dns and hasattr(packet, 'dns'):
+            dns = packet.dns
+            if hasattr(dns, 'qry_name'):
+                if hasattr(dns, 'a'):
+                    print(f'{log_message} {dns.qry_name} {dns.a}')
+                else:
+                    print(f'{log_message} {dns.qry_name}')
+        if self.capture_http and hasattr(packet, 'http'):
+            http = packet.http
+            if hasattr(http, 'request_method'):
+                print(f'{log_message} {http.request_method} {http.request_full_uri}')
 
 
 try:
-    shark = Shark(network_interface=options.interface, output_file=options.output, capture_dns=options.dns)
+    shark = Shark(network_interface=options.interface,
+                  output_file=options.output,
+                  capture_dns=options.dns,
+                  capture_http=options.http)
     shark.start()
 except KeyboardInterrupt:
     print('\nInterrupted')

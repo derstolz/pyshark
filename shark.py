@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-
+import datetime
 import pyshark
 
 DEFAULT_OUTPUT_FILE = 'shark-output.txt'
@@ -19,7 +19,7 @@ def get_arguments():
                         action='store_true',
                         default=False,
                         required=False,
-                        help='Pass this argument to enable dns sniffing. Default is False')
+                        help='Pass this argument to enable DNS sniffing. Default is False')
     parser.add_argument('--http',
                         action='store_true',
                         default=False,
@@ -63,8 +63,11 @@ class Shark:
         elif hasattr(packet, 'udp'):
             srcport = f':{packet.udp.srcport}'
             dstport = f':{packet.udp.dstport}'
-        log_message = f'{packet.transport_layer} {packet.highest_layer} ' \
+        log_message = f'[{datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] ' \
+            f'{packet.transport_layer} {packet.highest_layer} ' \
             f'{packet.ip.src}{srcport} -> {packet.ip.dst}{dstport}'
+
+        # process DNS packet
         if self.capture_dns and hasattr(packet, 'dns'):
             dns = packet.dns
             if hasattr(dns, 'qry_name'):
@@ -72,10 +75,26 @@ class Shark:
                     print(f'{log_message} {dns.qry_name} {dns.a}')
                 else:
                     print(f'{log_message} {dns.qry_name}')
+
+        # process HTTP packet
         if self.capture_http and hasattr(packet, 'http'):
             http = packet.http
             if hasattr(http, 'request_method'):
-                print(f'{log_message} {http.request_method} {http.request_full_uri}')
+                if hasattr(http, 'cookie'):
+                    cookie = f'\nCookie: {http.cookie}'
+                else:
+                    cookie = ''
+                if hasattr(http, 'authorization'):
+                    authorization = f'\nAuthorization: {http.authorization}'
+                else:
+                    authorization = ''
+                if hasattr(http, 'user_agent'):
+                    user_agent = f'\nUser-Agent: {http.user_agent}'
+                else:
+                    user_agent = ''
+                host = f'\nHost: {http.host}'
+                print(f'{log_message} {http.request_method} {http.request_uri} {http.request_version} '
+                      f'{host} {cookie} {authorization} {user_agent}')
 
 
 try:
@@ -86,4 +105,7 @@ try:
     shark.start()
 except KeyboardInterrupt:
     print('\nInterrupted')
+    exit(0)
+except Exception as e:
+    print(f'Unexpected error: {e}')
     exit(1)
